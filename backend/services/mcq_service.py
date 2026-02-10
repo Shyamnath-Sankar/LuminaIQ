@@ -52,10 +52,15 @@ EXAMPLES of good topics:
 - "Working with Files and I/O"
 
 Return ONLY a JSON array of topic strings:
-["Topic 1", "Topic 2", "Topic 3"]"""
+[\"Topic 1\", \"Topic 2\", \"Topic 3\"]"""
 
             messages = [{"role": "user", "content": prompt}]
-            response = await llm_service.chat_completion(messages, temperature=0.3)
+            response = await llm_service.chat_completion(messages, temperature=0.3, max_tokens=2000)
+            
+            logger.info(f"Topic generation response length: {len(response)} chars")
+            if not response:
+                logger.error("LLM returned empty response for topic generation")
+                return []
 
             topics = []
             start = response.find("[")

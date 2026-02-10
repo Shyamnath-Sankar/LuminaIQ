@@ -2,7 +2,7 @@ import shutil
 import os
 import uuid
 import tempfile
-from typing import List
+from typing import List, Optional
 from fastapi import (
     APIRouter,
     UploadFile,
@@ -12,8 +12,12 @@ from fastapi import (
     Depends,
     Form,
     status,
+    Query,
 )
+from pydantic import BaseModel
 from services.document_service import document_service
+from services.embedding_service import embedding_service
+from services.qdrant_service import qdrant_service
 from models.schemas import DocumentUploadResponse, DocumentList
 from config.settings import settings
 from api.deps import get_current_user
@@ -22,6 +26,20 @@ import httpx
 from utils.logger import logger
 
 router = APIRouter()
+
+
+class SearchRequest(BaseModel):
+    query: str
+    document_ids: Optional[List[str]] = None
+    limit: int = 10
+
+
+class SearchResult(BaseModel):
+    text: str
+    document_id: str
+    document_name: Optional[str] = None
+    chunk_id: Optional[int] = None
+    score: float
 
 
 @router.post("/upload", response_model=DocumentUploadResponse)
@@ -190,3 +208,78 @@ async def get_document_queue_status(
         return status
     except Exception as e:
         raise HTTPException(500, str(e))
+
+
+@router.post("/{project_id}/search")
+async def search_documents(
+    project_id: str,
+    request: SearchRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Semantic search across documents in a project.
+
+    Args:
+        project_id: The project to search in
+        request: SearchRequest with query, optional document_ids filter, and limit
+
+    Returns:
+        List of search results with text, document info, and relevance score
+    """
+    try:
+        collection_name = f"project_{project_id}"
+
+        # Generate embedding for the search query
+        query_embedding = await embedding_service.generate_embedding(request.query)
+
+        # Build filter conditions
+        filter_conditions = None
+        if request.document_ids and len(request.document_ids) > 0:
+            filter_conditions = {"document_ids": request.document_ids}
+
+        # Search in Qdrant
+        results = await qdrant_service.search(
+            collection_name=collection_name,
+            query_vector=query_embedding,
+            limit=request.limit,
+            filter_conditions=filter_conditions,
+        )
+
+        # Get document names from the database for richer results
+        doc_names = {}
+        if results:
+            doc_ids = list(
+                set(r.get("document_id") for r in results if r.get("document_id"))
+            )
+            if doc_ids:
+                try:
+                    docs_response = (
+                        document_service.client.table("documents")
+                        .select("id, filename")
+                        .in_("id", doc_ids)
+                        .execute()
+                    )
+                    for doc in docs_response.data:
+                        doc_names[doc["id"]] = doc["filename"]
+                except Exception as e:
+                    logger.warning(f"Could not fetch document names: {e}")
+
+        # Format results
+        search_results = []
+        for result in results:
+            doc_id = result.get("document_id")
+            search_results.append(
+                {
+                    "text": result.get("text", ""),
+                    "document_id": doc_id,
+                    "document_name": doc_names.get(doc_id, "Unknown"),
+                    "chunk_id": result.get("chunk_id"),
+                    "score": result.get("score", 0),
+                }
+            )
+
+        return {"results": search_results, "query": request.query}
+
+    except Exception as e:
+        logger.error(f"Search error: {str(e)}")
+        raise HTTPException(500, f"Search failed: {str(e)}")

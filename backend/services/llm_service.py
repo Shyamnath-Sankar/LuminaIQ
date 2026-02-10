@@ -1,4 +1,5 @@
 from langchain_together import ChatTogether
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from config.settings import settings
 from typing import List, Dict, Any
 from utils.logger import logger
@@ -12,12 +13,35 @@ class LLMService:
         # Validate API key before initializing
         self._validate_api_key()
         
-        self.client = ChatTogether(
-            model=settings.LLM_MODEL,
-            together_api_key=settings.TOGETHER_API_KEY,
-            temperature=0.7 # Default temperature, can be overridden
-        )
         self.model = settings.LLM_MODEL
+        self.api_key = settings.TOGETHER_API_KEY
+    
+    def _get_client(self, temperature: float = 0.7, max_tokens: int = 1000):
+        """Create a client with specific settings"""
+        return ChatTogether(
+            model=self.model,
+            together_api_key=self.api_key,
+            temperature=temperature,
+            max_tokens=max_tokens
+        )
+    
+    def _convert_messages(self, messages: List[Dict[str, str]]):
+        """Convert dict messages to LangChain message objects"""
+        converted = []
+        for msg in messages:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+            
+            if role == "user":
+                converted.append(HumanMessage(content=content))
+            elif role == "assistant":
+                converted.append(AIMessage(content=content))
+            elif role == "system":
+                converted.append(SystemMessage(content=content))
+            else:
+                converted.append(HumanMessage(content=content))
+        
+        return converted
     
     def _validate_api_key(self):
         """Validate Together AI API key by making a test request"""
@@ -61,19 +85,25 @@ class LLMService:
     ) -> str:
         """Generate chat completion"""
         try:
-            response = await self.client.ainvoke(
-                messages,
-                temperature=temperature,
-                max_tokens=max_tokens
-            )
+            # Create client with specific settings
+            client = self._get_client(temperature=temperature, max_tokens=max_tokens)
             
-            answer = response.content
+            # Convert messages to LangChain format
+            lc_messages = self._convert_messages(messages)
+            
+            logger.info(f"Sending {len(lc_messages)} messages to LLM (temp={temperature}, max_tokens={max_tokens})")
+            
+            response = await client.ainvoke(lc_messages)
+            
+            answer = response.content if response.content else ""
             logger.info(f"Generated completion with {len(answer)} characters")
             
             return answer
             
         except Exception as e:
             logger.error(f"Error in chat completion: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
             raise
     
     async def chat_completion_stream(
@@ -84,11 +114,13 @@ class LLMService:
     ):
         """Generate streaming chat completion"""
         try:
-            async for chunk in self.client.astream(
-                messages,
-                temperature=temperature,
-                max_tokens=max_tokens
-            ):
+            # Create client with specific settings
+            client = self._get_client(temperature=temperature, max_tokens=max_tokens)
+            
+            # Convert messages to LangChain format
+            lc_messages = self._convert_messages(messages)
+            
+            async for chunk in client.astream(lc_messages):
                 if chunk.content:
                     yield chunk.content
                     

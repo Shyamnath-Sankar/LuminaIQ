@@ -788,7 +788,10 @@ OUTPUT FORMAT - Return ONLY valid JSON, no markdown:
             return {}
 
     async def get_full_graph(self, project_id: str) -> Dict[str, Any]:
-        """Get full graph data for visualization."""
+        """Get full graph data for visualization.
+        
+        Always includes ALL topics from documents, even if no relations exist yet.
+        """
         try:
             result = (
                 self.client.table("topic_relations")
@@ -814,6 +817,10 @@ OUTPUT FORMAT - Return ONLY valid JSON, no markdown:
                         "weight": edge["weight"],
                     }
                 )
+
+            # Always include ALL topics from documents even without relations
+            for topic in topic_doc_map:
+                nodes.add(topic)
 
             return {
                 "nodes": [

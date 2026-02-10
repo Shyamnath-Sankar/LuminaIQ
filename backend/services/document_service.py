@@ -83,17 +83,57 @@ class DocumentService:
                 chunks, document_id, filename, collection_name
             )
 
-            # 5. Update status to completed
-            await self._update_document_status(document_id, "completed")
-            logger.info(f"Document {filename} processed successfully")
-
-            # 6. Generate Topics
+            # 5. Generate Topics (BEFORE marking as completed)
+            await self._update_document_status(
+                document_id, "processing", "Generating topics..."
+            )
             try:
                 from services.mcq_service import mcq_service
 
                 await mcq_service.generate_document_topics(project_id, document_id)
+                logger.info(f"Topics generated for {filename}")
             except Exception as topic_err:
                 logger.error(f"Failed to generate topics for {filename}: {topic_err}")
+
+            # 5b. Auto-build knowledge graph from all project topics
+            try:
+                from services.knowledge_graph_service import knowledge_graph
+                from db.client import supabase_client
+
+                docs = (
+                    supabase_client.table("documents")
+                    .select("topics")
+                    .eq("project_id", project_id)
+                    .eq("upload_status", "completed")
+                    .execute()
+                )
+                all_topics = []
+                for d in (docs.data or []):
+                    all_topics.extend(d.get("topics") or [])
+                
+                # Also include topics from the current doc (not yet marked completed)
+                current_doc = (
+                    supabase_client.table("documents")
+                    .select("topics")
+                    .eq("id", document_id)
+                    .execute()
+                )
+                if current_doc.data:
+                    all_topics.extend(current_doc.data[0].get("topics") or [])
+                
+                all_topics = list(set(all_topics))
+                if len(all_topics) >= 2:
+                    logger.info(f"Auto-building knowledge graph with {len(all_topics)} topics")
+                    await knowledge_graph.build_graph_from_topics(
+                        project_id, all_topics, force_rebuild=True
+                    )
+                    logger.info(f"Knowledge graph built for {filename}")
+            except Exception as kg_err:
+                logger.error(f"Failed to build knowledge graph: {kg_err}")
+
+            # 6. Update status to completed (ready)
+            await self._update_document_status(document_id, "completed")
+            logger.info(f"Document {filename} processed successfully")
 
         except Exception as e:
             logger.error(f"Error processing document {filename}: {str(e)}")
@@ -282,19 +322,58 @@ class DocumentService:
                     chunks, document_id, filename, collection_name, job
                 )
 
-                # Update status to completed
-                await self._update_document_status(document_id, "completed")
-                logger.info(f"Document {filename} embeddings completed successfully")
-
-                # Generate Topics
+                # Generate Topics (BEFORE marking as completed)
+                await self._update_document_status(
+                    document_id, "embedding", "Generating topics..."
+                )
                 try:
                     from services.mcq_service import mcq_service
 
                     await mcq_service.generate_document_topics(project_id, document_id)
+                    logger.info(f"Topics generated for {filename}")
                 except Exception as topic_err:
                     logger.error(
                         f"Failed to generate topics for {filename}: {topic_err}"
                     )
+
+                # Auto-build knowledge graph from all project topics
+                try:
+                    from services.knowledge_graph_service import knowledge_graph
+                    from db.client import supabase_client
+
+                    docs = (
+                        supabase_client.table("documents")
+                        .select("topics")
+                        .eq("project_id", project_id)
+                        .eq("upload_status", "completed")
+                        .execute()
+                    )
+                    all_topics = []
+                    for d in (docs.data or []):
+                        all_topics.extend(d.get("topics") or [])
+
+                    current_doc = (
+                        supabase_client.table("documents")
+                        .select("topics")
+                        .eq("id", document_id)
+                        .execute()
+                    )
+                    if current_doc.data:
+                        all_topics.extend(current_doc.data[0].get("topics") or [])
+
+                    all_topics = list(set(all_topics))
+                    if len(all_topics) >= 2:
+                        logger.info(f"Auto-building knowledge graph with {len(all_topics)} topics")
+                        await knowledge_graph.build_graph_from_topics(
+                            project_id, all_topics, force_rebuild=True
+                        )
+                        logger.info(f"Knowledge graph built for {filename}")
+                except Exception as kg_err:
+                    logger.error(f"Failed to build knowledge graph: {kg_err}")
+
+                # Update status to completed (ready)
+                await self._update_document_status(document_id, "completed")
+                logger.info(f"Document {filename} embeddings completed successfully")
 
             except Exception as e:
                 logger.error(f"Error processing chunks for {filename}: {str(e)}")

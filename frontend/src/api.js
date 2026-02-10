@@ -410,3 +410,89 @@ export const getSuggestedTopic = async (projectId) => {
     return response.data;
 };
 
+// ============== Search API ==============
+
+export const searchDocuments = async (projectId, query, documentIds = null, limit = 10) => {
+    const response = await api.post(`/documents/${projectId}/search`, {
+        query,
+        document_ids: documentIds,
+        limit
+    });
+    return response.data;
+};
+
+// ============== Knowledge Graph API ==============
+
+// Get full knowledge graph for visualization
+export const getKnowledgeGraphVisualization = async (projectId) => {
+    const response = await api.get(`/knowledge-graph/graph/${projectId}`);
+    return response.data;
+};
+
+// Get topic summary using RAG
+export const getTopicSummary = async (projectId, topic, forceRegenerate = false) => {
+    const response = await api.post('/knowledge-graph/topic-summary', {
+        project_id: projectId,
+        topic,
+        force_regenerate: forceRegenerate
+    });
+    return response.data;
+};
+
+// Record user interaction with graph
+export const recordGraphInteraction = async (projectId, topic, eventType, durationMs = 0, metadata = null) => {
+    const response = await api.post('/knowledge-graph/analytics/record', {
+        project_id: projectId,
+        topic,
+        event_type: eventType,
+        duration_ms: durationMs,
+        metadata
+    });
+    return response.data;
+};
+
+// Record batch interactions
+export const recordBatchInteractions = async (projectId, interactions) => {
+    const response = await api.post('/knowledge-graph/analytics/record-batch', {
+        project_id: projectId,
+        interactions
+    });
+    return response.data;
+};
+
+// Get user analytics
+export const getGraphAnalytics = async (projectId, days = 7) => {
+    const response = await api.get(`/knowledge-graph/analytics/${projectId}`, {
+        params: { days }
+    });
+    return response.data;
+};
+
+// Get learning suggestions
+export const getLearningSuggestions = async (projectId, currentTopic = null, limit = 3) => {
+    const response = await api.post('/knowledge-graph/suggestions', {
+        project_id: projectId,
+        current_topic: currentTopic,
+        limit
+    });
+    return response.data;
+};
+
+// Start learning session
+export const startLearningSession = async (projectId) => {
+    const response = await api.post('/knowledge-graph/session/start', {
+        project_id: projectId
+    });
+    return response.data;
+};
+
+// End learning session
+export const endLearningSession = async (sessionId, topicsVisited, totalTimeMs) => {
+    const response = await api.post('/knowledge-graph/session/end', {
+        session_id: sessionId,
+        topics_visited: topicsVisited,
+        total_time_ms: totalTimeMs
+    });
+    return response.data;
+};
+

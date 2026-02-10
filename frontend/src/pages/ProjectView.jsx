@@ -21,7 +21,13 @@ import {
     Menu,
     Calendar,
     Brain,
-    Target
+    Target,
+    Search,
+    Timer,
+    GraduationCap,
+    Bookmark,
+    Network,
+    BarChart3
 } from 'lucide-react';
 import {
     uploadDocument,
@@ -39,21 +45,33 @@ import {
     generateNotes
 } from '../api';
 import { useToast } from '../context/ToastContext';
+import { useSettings } from '../context/SettingsContext';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import UploadZone from '../components/UploadZone';
 
-
+// View Components
 import QuizView from '../components/views/QuizView';
 import QAView from '../components/views/QAView';
 import NotesView from '../components/views/NotesView';
 import StudyDashboard from '../components/views/StudyDashboard';
 import LearningPathView from '../components/views/LearningPathView';
+import AdvancedAnalytics from '../components/views/AdvancedAnalytics';
+import ExamPrepMode from '../components/views/ExamPrepMode';
+import VisualLearning from '../components/views/VisualLearning';
+import KnowledgeGraphView from '../components/views/KnowledgeGraphView';
+
+// Utility Components
+import PomodoroTimer from '../components/PomodoroTimer';
+import AITutorChat from '../components/AITutorChat';
+import BookmarksPanel from '../components/BookmarksPanel';
+import GlobalSearch from '../components/GlobalSearch';
 
 const ProjectView = () => {
     const { projectId } = useParams();
     const navigate = useNavigate();
     const toast = useToast();
+    const { settings } = useSettings();
     const [activeTab, setActiveTab] = useState('chat');
     const [messages, setMessages] = useState([]);
     const [inputMessage, setInputMessage] = useState('');
@@ -67,6 +85,13 @@ const ProjectView = () => {
     const [isProcessingDocs, setIsProcessingDocs] = useState(true);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [isDocsMenuOpen, setIsDocsMenuOpen] = useState(false);
+
+    // New Feature States
+    const [showSearch, setShowSearch] = useState(false);
+    const [showPomodoro, setShowPomodoro] = useState(false);
+    const [showAITutor, setShowAITutor] = useState(false);
+    const [showBookmarks, setShowBookmarks] = useState(false);
+    const [tutorTopic, setTutorTopic] = useState(null);
 
     // Topics State
     const [availableTopics, setAvailableTopics] = useState([]);
@@ -227,13 +252,33 @@ const ProjectView = () => {
             // No, it's not defined in ProjectView props usually.
             // Let's check where selectedDocuments comes from.
             // It's likely state in ProjectView.
-            // I need to check if 'setSelectedDocuments' is available in scope.
             // Lines 70-80 usually define it.
             if (typeof setSelectedDocuments === 'function') {
                 setSelectedDocuments([documents[0].id]);
             }
         }
     }, [documents]);
+
+    // Keyboard shortcuts
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            // Ctrl+K or Cmd+K for search
+            if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+                e.preventDefault();
+                setShowSearch(true);
+            }
+            // Escape to close modals
+            if (e.key === 'Escape') {
+                if (showSearch) setShowSearch(false);
+                if (showPomodoro) setShowPomodoro(false);
+                if (showAITutor) setShowAITutor(false);
+                if (showBookmarks) setShowBookmarks(false);
+            }
+        };
+
+        document.addEventListener('keydown', handleKeyDown);
+        return () => document.removeEventListener('keydown', handleKeyDown);
+    }, [showSearch, showPomodoro, showAITutor, showBookmarks]);
 
     const [showSummary, setShowSummary] = useState(false);
     const [summaryContent, setSummaryContent] = useState('');
@@ -459,6 +504,10 @@ const ProjectView = () => {
                         <NavItem id="notes" icon={FileText} label="Notes" />
                         <NavItem id="path" icon={Target} label="Learning Path" />
                         <NavItem id="study" icon={Brain} label="Study Dashboard" />
+                        <NavItem id="analytics" icon={BarChart3} label="Analytics" />
+                        <NavItem id="exam" icon={GraduationCap} label="Exam Prep" />
+                        <NavItem id="visual" icon={Network} label="Mind Map" />
+                        <NavItem id="knowledge" icon={Network} label="Knowledge Graph" />
                     </nav>
                 </div>
 
@@ -486,7 +535,10 @@ const ProjectView = () => {
                             <p className="text-sm font-bold text-[#4A3B32] truncate">User</p>
                             <p className="text-xs text-[#8a6a5c] font-medium">Free Plan</p>
                         </div>
-                        <button className="p-2 hover:bg-black/5 rounded-full transition-colors">
+                        <button 
+                            onClick={() => navigate('/settings')}
+                            className="p-2 hover:bg-black/5 rounded-full transition-colors"
+                        >
                             <Settings className="h-4 w-4 text-[#8a6a5c]" />
                         </button>
                     </div>
@@ -517,6 +569,10 @@ const ProjectView = () => {
                                     {activeTab === 'notes' && 'Notes'}
                                     {activeTab === 'path' && 'Learning Path'}
                                     {activeTab === 'study' && 'Study'}
+                                    {activeTab === 'analytics' && 'Analytics'}
+                                    {activeTab === 'exam' && 'Exam Prep'}
+                                    {activeTab === 'visual' && 'Mind Map'}
+                                    {activeTab === 'knowledge' && 'Knowledge Graph'}
                                 </h2>
                                 <p className="text-xs text-[#8a6a5c] truncate hidden sm:block">
                                     {documents.length > 0 ? `Active: ${documents[0].filename}` : 'No document active'}
@@ -581,6 +637,42 @@ const ProjectView = () => {
                     </div>
 
                     <div className="flex items-center gap-1 sm:gap-2">
+                        {/* Search Button */}
+                        <button
+                            onClick={() => setShowSearch(true)}
+                            className="p-2 rounded-xl text-[#4A3B32] hover:bg-[#E6D5CC]/30 transition-colors"
+                            title="Search (Ctrl+K)"
+                        >
+                            <Search className="h-5 w-5" />
+                        </button>
+
+                        {/* Pomodoro Timer Button */}
+                        <button
+                            onClick={() => setShowPomodoro(!showPomodoro)}
+                            className={`p-2 rounded-xl transition-colors ${showPomodoro ? 'bg-[#C8A288] text-white' : 'text-[#4A3B32] hover:bg-[#E6D5CC]/30'}`}
+                            title="Pomodoro Timer"
+                        >
+                            <Timer className="h-5 w-5" />
+                        </button>
+
+                        {/* Bookmarks Button */}
+                        <button
+                            onClick={() => setShowBookmarks(!showBookmarks)}
+                            className={`p-2 rounded-xl transition-colors ${showBookmarks ? 'bg-[#C8A288] text-white' : 'text-[#4A3B32] hover:bg-[#E6D5CC]/30'}`}
+                            title="Bookmarks"
+                        >
+                            <Bookmark className="h-5 w-5" />
+                        </button>
+
+                        {/* AI Tutor Button */}
+                        <button
+                            onClick={() => setShowAITutor(!showAITutor)}
+                            className={`p-2 rounded-xl transition-colors hidden sm:block ${showAITutor ? 'bg-[#C8A288] text-white' : 'text-[#4A3B32] hover:bg-[#E6D5CC]/30'}`}
+                            title="AI Tutor"
+                        >
+                            <Brain className="h-5 w-5" />
+                        </button>
+
                         {/* Docs Toggle - Mobile/Tablet */}
                         <button
                             onClick={() => setIsDocsMenuOpen(!isDocsMenuOpen)}
@@ -773,6 +865,52 @@ const ProjectView = () => {
                             }}
                         />
                     )}
+
+                    {/* Advanced Analytics View */}
+                    {activeTab === 'analytics' && (
+                        <AdvancedAnalytics
+                            projectId={projectId}
+                            documents={documents}
+                            selectedDocuments={selectedDocuments}
+                            documentTopics={documentTopics}
+                        />
+                    )}
+
+                    {/* Exam Prep Mode View */}
+                    {activeTab === 'exam' && (
+                        <ExamPrepMode
+                            projectId={projectId}
+                            documents={documents}
+                            selectedDocuments={selectedDocuments}
+                            availableTopics={availableTopics}
+                            onStartQuiz={(topic, mode) => {
+                                setPreSelectedTopic(topic);
+                                setPreSelectedQuizMode(mode || 'both');
+                                setActiveTab('quiz');
+                            }}
+                        />
+                    )}
+
+                    {/* Visual Learning / Mind Map View */}
+                    {activeTab === 'visual' && (
+                        <VisualLearning
+                            projectId={projectId}
+                            documents={documents}
+                            selectedDocuments={selectedDocuments}
+                            documentTopics={documentTopics}
+                            onTopicSelect={(topic) => {
+                                setTutorTopic(topic);
+                                setShowAITutor(true);
+                            }}
+                        />
+                    )}
+
+                    {/* Knowledge Graph View */}
+                    {activeTab === 'knowledge' && (
+                        <div className="h-full p-4 overflow-auto">
+                            <KnowledgeGraphView projectId={projectId} />
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -787,10 +925,10 @@ const ProjectView = () => {
 
             {!isSidebarHidden && (
             <div className={`
-                fixed inset-y-0 right-0 z-50 w-80 bg-[#FDF6F0]/95 backdrop-blur-xl border-l border-white/20 p-6 shadow-2xl shrink-0 flex flex-col transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:flex lg:shadow-none
+                fixed inset-y-0 right-0 z-50 w-80 bg-[#FDF6F0]/95 backdrop-blur-xl border-l border-white/20 p-6 shadow-2xl shrink-0 flex flex-col overflow-hidden transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:flex lg:shadow-none
                 ${isDocsMenuOpen ? 'translate-x-0' : 'translate-x-full'}
             `}>
-                <div className="flex justify-between items-center mb-6 lg:hidden">
+                <div className="flex justify-between items-center mb-6 lg:hidden shrink-0">
                     <h3 className="font-bold text-xl text-[#4A3B32]">Documents</h3>
                     <button
                         onClick={() => setIsDocsMenuOpen(false)}
@@ -800,7 +938,7 @@ const ProjectView = () => {
                     </button>
                 </div>
 
-                <div className="bg-gradient-to-br from-[#C8A288] to-[#A08072] text-white p-5 rounded-2xl mb-6 shadow-lg shadow-[#C8A288]/30">
+                <div className="bg-gradient-to-br from-[#C8A288] to-[#A08072] text-white p-5 rounded-2xl mb-6 shadow-lg shadow-[#C8A288]/30 shrink-0">
                     <div className="flex items-center gap-3 mb-2">
                         <div className="h-8 w-8 bg-white/20 rounded-lg flex items-center justify-center backdrop-blur-md">
                             <FileText className="h-5 w-5" />
@@ -815,7 +953,7 @@ const ProjectView = () => {
 
                 {
                     documents.length > 0 ? (
-                        <div className="flex-1 overflow-y-auto space-y-3 pr-1 custom-scrollbar">
+                        <div className="flex-1 min-h-0 overflow-y-auto space-y-3 pr-1 custom-scrollbar">
                             {documents.map((doc) => (
                                 <div
                                     key={doc.id}
@@ -973,6 +1111,70 @@ const ProjectView = () => {
                     </div>
                 )
             }
+
+            {/* Floating Pomodoro Timer */}
+            {showPomodoro && (
+                <div className="fixed bottom-4 right-4 z-50 animate-in slide-in-from-bottom-4">
+                    <PomodoroTimer
+                        projectId={projectId}
+                        documentId={selectedDocuments.length === 1 ? selectedDocuments[0] : null}
+                        onClose={() => setShowPomodoro(false)}
+                    />
+                </div>
+            )}
+
+            {/* AI Tutor Chat Panel */}
+            {showAITutor && (
+                <div className="fixed bottom-4 right-4 z-50 animate-in slide-in-from-right-4 md:right-[340px]">
+                    <AITutorChat
+                        projectId={projectId}
+                        selectedDocuments={selectedDocuments}
+                        initialTopic={tutorTopic}
+                        onClose={() => {
+                            setShowAITutor(false);
+                            setTutorTopic(null);
+                        }}
+                    />
+                </div>
+            )}
+
+            {/* Bookmarks Panel */}
+            {showBookmarks && (
+                <div className="fixed top-20 right-4 z-50 animate-in slide-in-from-right-4 md:right-[340px]">
+                    <BookmarksPanel
+                        projectId={projectId}
+                        documents={documents}
+                        onClose={() => setShowBookmarks(false)}
+                        onNavigate={(docId, topic) => {
+                            if (docId) {
+                                setSelectedDocuments([docId]);
+                            }
+                            if (topic) {
+                                setTutorTopic(topic);
+                                setShowAITutor(true);
+                            }
+                        }}
+                    />
+                </div>
+            )}
+
+            {/* Global Search Modal */}
+            <GlobalSearch
+                isOpen={showSearch}
+                onClose={() => setShowSearch(false)}
+                projectId={projectId}
+                documents={documents}
+                documentTopics={documentTopics}
+                onSelectDocument={(docId) => {
+                    setSelectedDocuments([docId]);
+                    setShowSearch(false);
+                }}
+                onSelectTopic={(topic) => {
+                    setTutorTopic(topic);
+                    setShowAITutor(true);
+                    setShowSearch(false);
+                }}
+            />
         </div >
     );
 };
