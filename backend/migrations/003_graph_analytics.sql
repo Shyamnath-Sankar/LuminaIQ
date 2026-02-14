@@ -5,7 +5,7 @@
 CREATE TABLE IF NOT EXISTS graph_analytics (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     topic TEXT NOT NULL,
     event_type TEXT NOT NULL, -- 'click', 'expand', 'summary_view', 'summary_generate', 'hover'
     duration_ms INTEGER DEFAULT 0, -- Time spent on this interaction
@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS topic_summaries (
 CREATE TABLE IF NOT EXISTS learning_sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     started_at TIMESTAMPTZ DEFAULT NOW(),
     ended_at TIMESTAMPTZ,
     topics_visited TEXT[] DEFAULT '{}',
